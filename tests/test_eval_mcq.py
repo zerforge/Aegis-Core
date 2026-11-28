@@ -76,3 +76,12 @@ def test_summarize():
     assert s["n"] == 4 and s["correct"] == 3 and s["accuracy"] == 0.75
     assert s["majority_letter"] == "A" and s["majority_baseline"] == 0.5
     assert s["gold_counts"] == {"A": 2, "B": 1, "C": 1} and s["pred_counts"] == {"A": 1, "B": 2, "C": 1}
+
+
+def test_pred_records_tanpa_teks_dan_validasi_panjang():
+    it = em._item(0, "rahasia?", {k: f"o{k}" for k in "ABCD"}, "B")
+    rec = em.pred_records([em._key(it)[:16]], ["B"], ["C"])
+    assert rec == [{"k": em._key(it)[:16], "gold": "B", "pred": "C"}]
+    assert "rahasia" not in json.dumps(rec)
+    with pytest.raises(ValueError):
+        em.pred_records(["k"], ["A", "B"], ["A"])

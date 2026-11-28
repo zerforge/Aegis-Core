@@ -91,3 +91,17 @@ def test_dtype_kwarg_menurut_versi_transformers():
 
 def test_resolved_revision_tidak_menggagalkan_tanpa_cache():
     assert eb.resolved_revision("tidak/ada-model-ini", None) is None
+
+
+def test_revision_record_sha_terpin_dipakai_apa_adanya():
+    sha = "a81bae42db3975be1671e27b9c9a56da1a9f980f"
+    assert eb.revision_record("x/y", sha) == {"commit_hash": sha, "commit_hash_source": "pinned_arg",
+                                              "commit_hash_error": None}
+    assert eb.resolved_revision("x/y", sha) == sha
+
+
+def test_revision_record_bukan_sha_mencatat_alasan_kegagalan():
+    for rev in (None, "main", "a81bae4", "A81BAE42DB3975BE1671E27B9C9A56DA1A9F980F"):
+        r = eb.revision_record("tidak/ada-model-ini", rev)
+        assert r["commit_hash"] is None and r["commit_hash_source"] is None
+        assert r["commit_hash_error"]  # tidak boleh diam-diam

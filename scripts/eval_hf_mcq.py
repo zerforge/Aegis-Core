@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 LETTERS = "ABCD"
 HEADER = "The following are multiple-choice questions about cybersecurity. Answer with the letter of the correct option.\n\n"
 
@@ -125,12 +125,19 @@ def summarize(gold, pred):
             "pred_counts": dict(sorted(Counter(pred).items()))}
 
 
+def pred_records(keys, gold, pred):
+    """Catatan per soal tanpa teks: kunci = 16 heks pertama sha256 pertanyaan."""
+    if not (len(keys) == len(gold) == len(pred)):
+        raise ValueError("panjang keys/gold/pred berbeda")
+    return [{"k": k, "gold": g, "pred": p} for k, g, p in zip(keys, gold, pred)]
+
+
 def run(a):
     import time
 
     import torch
     import transformers
-    from eval_hf_bpb import dtype_kwarg, resolved_revision
+    from eval_hf_bpb import dtype_kwarg, revision_record
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     kw = {"device_map": "auto"}
@@ -157,7 +164,7 @@ def run(a):
         shot, test = split_items(items, a.shots, a.limit)
         if a.show_first:
             print(f"--- prompt pertama ({name}) ---\n{build_prompt(shot, test[0])}\n---", file=sys.stderr)
-        gold, pred, too_long = [], [], 0
+        gold, pred, keys, too_long = [], [], [], 0
         for it in test:
             ids = tok(build_prompt(shot, it))["input_ids"]
             if len(ids) > a.max_len:
@@ -168,13 +175,16 @@ def run(a):
                 logits = model(input_ids=x).logits[0, -1].float()
             pred.append(LETTERS[int(torch.argmax(logits[letter_ids]))])
             gold.append(it["answer"])
+            keys.append(_key(it)[:16])
         r = summarize(gold, pred)
+        if a.save_preds:
+            r["items"] = pred_records(keys, gold, pred)
         r.update({"file": Path(path).name, "file_sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest(),
                   "invalid_rows": bad, "skipped_too_long": too_long, "shots": len(shot),
                   "fewshot_excluded_from_test": len(shot)})
         res[name] = r
     return {"script_version": __version__, "model_id": a.model_id, "revision_arg": a.revision,
-            "commit_hash": resolved_revision(a.model_id, a.revision),
+            **revision_record(a.model_id, a.revision),
             "dtype": "4bit" if a.load_4bit else a.dtype, "shots": a.shots, "limit": a.limit,
             "seconds": round(time.time() - t0, 1), "torch": torch.__version__,
             "transformers": transformers.__version__,
@@ -195,6 +205,9 @@ def main(argv=None):
     ap.add_argument("--dtype", choices=("fp16", "bf16", "fp32"), default="fp16")
     ap.add_argument("--load-4bit", action="store_true")
     ap.add_argument("--show-first", action="store_true", help="cetak prompt pertama ke stderr")
+    ap.add_argument("--save-preds", action="store_true",
+                    help="simpan gold/prediksi per soal (kunci = 16 heks pertama sha256 pertanyaan; "
+                         "tanpa teks) agar dua model bisa dibandingkan berpasangan")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     if any("=" not in b for b in a.bench) or a.shots < 0 or a.shots > 4:

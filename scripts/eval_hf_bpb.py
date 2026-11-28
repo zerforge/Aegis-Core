@@ -10,11 +10,12 @@ Hanya angka yang disimpan; tidak ada teks.
 import argparse
 import json
 import math
+import re
 import sys
 import time
 from pathlib import Path
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 
 def load_docs(path, max_docs, max_chars, key="text"):
@@ -47,13 +48,27 @@ def dtype_kwarg(transformers_version):
     return "dtype" if int(str(transformers_version).split(".")[0]) >= 5 else "torch_dtype"
 
 
-def resolved_revision(model_id, revision):
-    """sha komit snapshot yang dipakai (nama folder snapshot di cache lokal); None bila tak ada."""
+_SHA40 = re.compile(r"^[0-9a-f]{40}$")
+
+
+def revision_record(model_id, revision):
+    """Catatan revisi model untuk JSON hasil. Bila --revision sudah berupa sha 40 heksa, itulah
+    komit yang dimuat (sumber 'pinned_arg'). Selain itu coba cache lokal ('hf_cache'). Bila gagal,
+    alasannya DICATAT (commit_hash_error), bukan ditelan diam-diam; evaluasi tidak digagalkan."""
+    if revision and _SHA40.match(revision):
+        return {"commit_hash": revision, "commit_hash_source": "pinned_arg", "commit_hash_error": None}
     try:
         from huggingface_hub import snapshot_download
-        return Path(snapshot_download(model_id, revision=revision, local_files_only=True)).name
-    except Exception:  # noqa: BLE001 - metadata saja; jangan menggagalkan evaluasi
-        return None
+        sha = Path(snapshot_download(model_id, revision=revision, local_files_only=True)).name
+        return {"commit_hash": sha, "commit_hash_source": "hf_cache", "commit_hash_error": None}
+    except Exception as e:  # noqa: BLE001 - metadata saja; jangan menggagalkan evaluasi
+        return {"commit_hash": None, "commit_hash_source": None,
+                "commit_hash_error": f"{type(e).__name__}: {e}"[:300]}
+
+
+def resolved_revision(model_id, revision):
+    """sha komit yang dipakai, atau None (lihat revision_record untuk alasannya)."""
+    return revision_record(model_id, revision)["commit_hash"]
 
 
 def bits_per_byte(nll_nats, n_pred, n_tokens, n_bytes):
@@ -118,7 +133,7 @@ def run(a):
         res[name] = score_corpus(nll_fn, tokenize, load_docs(path, a.max_docs, a.max_chars),
                                  a.window, bos is not None)
     out = {"script_version": __version__, "model_id": a.model_id, "revision_arg": a.revision,
-           "commit_hash": resolved_revision(a.model_id, a.revision),
+           **revision_record(a.model_id, a.revision),
            "dtype": "4bit" if a.load_4bit else a.dtype, "window": a.window, "max_chars": a.max_chars,
            "max_docs": a.max_docs, "bos_prefix": bos is not None, "seconds": round(time.time() - t0, 1),
            "torch": torch.__version__, "transformers": transformers.__version__,
