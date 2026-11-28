@@ -19,9 +19,12 @@ Apache 2.0. Step 1 result (docs/EXPERIMENTS.md, one run each): Qwen3-8B-Base has
 byte on all three corpora, by 28.4% on Indonesian, 6.1% on cyber text, 3.5% on English. Since D1
 requires Indonesian, the evidence so far favours Qwen3-8B-Base as the working base for Phase 3.
 Against it: its training data is not disclosed, while Olmo 3's is (project goal: transparency).
-Remaining before acceptance: step 2 (multiple-choice cyber benchmarks after a licence check, a
-project-written Indonesian set), a reading of both licences by a qualified person (G2), and the
-owner's decision on the transparency trade-off.
+Step 2 result (docs/EXPERIMENTS.md, English multiple-choice, 4-shot, one run each): CTI-MCQ is a
+tie (73.8% vs 73.6%, 500 questions); CyberMetric-500 favours Qwen3-8B-Base (93.3% vs 86.3%,
+non-overlapping 95% intervals). No measure so far favours Olmo 3 beyond noise.
+Remaining before acceptance: a project-written Indonesian set (Indonesian knowledge is still not
+tested directly), a reading of both licences by a qualified person (G2), and the owner's
+decision on the transparency trade-off.
 
 ## D4 Compute plan - PROPOSED
 Local hardware (PENDING: owner to state RAM/GPU/VRAM) plus Kaggle when

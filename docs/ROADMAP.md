@@ -25,7 +25,7 @@ Each phase ends only when its gate is met with recorded evidence.
 | # | Phase | Exit gate (all written, with hashes/counts) | Status |
 |---|-------|---------------------------------------------|--------|
 | 0 | Governance foundation | ROADMAP, DECISIONS, updated THREAT_MODEL merged; owner answers D1-D6 | IN PROGRESS |
-| 1 | Evaluation and base choice | Fixed eval suite (6 layers) runs end to end; bake-off report; licence of chosen base read | IN PROGRESS (bake-off step 1 done; step 2 pending) |
+| 1 | Evaluation and base choice | Fixed eval suite (6 layers) runs end to end; bake-off report; licence of chosen base read | IN PROGRESS (bake-off: bits per byte and English MCQ done; Indonesian set pending) |
 | 2 | Data and licences | Each source audited per S2/DATA.md; train/eval split, near-dup and contamination check | NOT STARTED |
 | 3 | Domain adaptation | LoRA/SFT first; CPT only if a gap is measured; results vs base | NOT STARTED |
 | 4 | Instruction and safety tuning | S4(b) refusal set measured, failures recorded | NOT STARTED |

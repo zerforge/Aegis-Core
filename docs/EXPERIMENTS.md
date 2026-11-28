@@ -863,3 +863,53 @@ the repository history was not rewritten (INFERRED, not seen in the cache). Late
 pass `--revision` with these values.
 
 Reproduce: docs/KAGGLE_RUNBOOK.md.
+
+## Base-model bake-off, step 2: English multiple-choice cyber benchmarks (2026-11-28, Kaggle T4 x2)
+
+Question: do the two candidates differ in cyber knowledge on standard multiple-choice tests?
+Method (scripts/eval_hf_mcq.py v0.1.0, repo commit d565a2a): 4-shot prompt (one example per answer
+letter, chosen by sha256 order, excluded from the test set); the prediction is the highest logit
+among " A".." D" after `Answer:`; fp16, `device_map=auto`, no `trust_remote_code`. Same prompt and
+the same questions for both models (both result files report identical input sha256 prefixes and
+gold-letter counts). Models loaded with `--revision` set to the shas in the step 1 table.
+Benchmarks (internal evaluation only: CTIBench is CC BY-NC-SA 4.0, CyberMetric states no licence;
+neither is in the repo): CTI-MCQ (first 500 of 2,500 in sha256 order) and CyberMetric-500 (496 test
+questions after 4 few-shot examples).
+
+**Numbers printed by the owner from the notebook (VERIFIED; one run per model):**
+
+| accuracy (95% Wilson interval) | Olmo-3-1025-7B | Qwen3-8B-Base | majority-letter baseline |
+|---|---|---|---|
+| CTI-MCQ (n=500) | 73.8% (69.8-77.5) | 73.6% (69.6-77.3) | 38.4% |
+| CyberMetric-500 (n=496) | 86.3% (83.0-89.0) | 93.3% (90.8-95.2) | 25.2% |
+| time (s) / peak memory per GPU (GB) | 294.6 / 7.0 | 339.8 / 7.8 | |
+
+Derived: CTI-MCQ correct 369 vs 368 of 500 (a difference of one question). CyberMetric correct 428
+vs 463 of 496; error rate 13.7% vs 6.7%, gap 7.0 percentage points, intervals do not overlap.
+Predicted-letter counts are close to the gold counts for both models (no strong position bias):
+CTI gold A/B/C/D 77/163/192/68, Olmo 81/177/191/51, Qwen 81/156/189/74; CyberMetric gold
+124/124/123/125, Olmo 112/133/130/121, Qwen 119/123/128/126. `skipped_too_long` and `invalid_rows`
+are 0 for both benchmarks and both models.
+
+**Reading.** Qwen3-8B-Base is at least as good as Olmo 3 on every cyber measure so far: equal on
+CTI-MCQ, clearly better on CyberMetric, and better on bits per byte in all three corpora (step 1).
+The non-overlap of two separate intervals is a rough criterion, not a paired test (per-question
+predictions were not saved); the CTI tie and the CyberMetric gap are both large relative to that
+roughness. Caveats:
+- English only. Indonesian knowledge is not tested by these sets; step 1 measured only text
+  prediction in Indonesian.
+- Many CTI-MCQ questions ask for MITRE/CWE identifiers and names, which tests memorised facts.
+  Both sets are public; exposure in either model's pretraining cannot be excluded, and Qwen3's data
+  is not disclosed (Olmo 3's is). Exposure and ability are not separable here.
+- One run, a fixed subset (500 of 2,500 for CTI-MCQ), a 4-shot letter-logit method: scores compare
+  these two models with each other, not with published numbers.
+- Multiple choice does not measure instruction following, refusal or safety.
+
+**Run metadata.** transformers 5.20.2 (printed), fp16. The result JSON field `commit_hash` is null
+for both runs: `resolved_revision` in scripts/eval_hf_bpb.py 0.1.1 returned None in the Kaggle
+environment; cause not yet diagnosed. The revisions are those passed with `--revision` (shas above,
+INFERRED to match what was loaded because from_pretrained was given the sha). Note the library
+version differs from step 1 (5.24.1) because the Kaggle session was restarted; both models in step
+2 ran in the same session.
+
+Reproduce: docs/KAGGLE_RUNBOOK.md, step 2.

@@ -54,5 +54,57 @@ Paste the printed summary (bits per byte and per token per corpus, time, peak me
 
 Bits per byte measures how well a model predicts text. It does not measure cyber knowledge,
 instruction following, refusal or safety. The byte attribution is proportional (see the script
-docstring). Step 2 (multiple-choice cyber benchmarks and a project-written Indonesian set)
-needs its own licence check first.
+docstring). Step 2 (below) adds multiple-choice cyber benchmarks; a project-written
+Indonesian set is still to do.
+
+# Step 2: multiple-choice cyber benchmarks (scripts/eval_hf_mcq.py)
+
+Method: 4-shot prompt (one example per answer letter, chosen by sha256 order and excluded from
+the test set), then the model's logits for " A" / " B" / " C" / " D" at the position after
+`Answer:`; the highest letter is the prediction. Scores are comparable between models on this
+method only, not with published numbers. Report accuracy with the Wilson 95% interval and the
+majority-letter baseline (CTI-MCQ: always answering C gives about 37%, so 25% is not chance level
+here). Licences: CTIBench is CC BY-NC-SA 4.0 and CyberMetric states no licence in its README:
+internal evaluation only; do not redistribute them or commit them to the repo. The script prints
+counts only, never question text (except `--show-first`, which prints one prompt to stderr, so
+do not paste that output publicly).
+
+## Kaggle cells (same notebook as step 1; Aegis-Core must be updated first)
+
+```python
+# 1. Update the repo copy in the notebook (or re-upload it) so scripts/eval_hf_mcq.py exists.
+!ls Aegis-Core/scripts/eval_hf_mcq.py
+
+# 2. Data. Use the same repository ids you used when you listed the files; if a download
+#    fails, paste the error instead of changing ids by guesswork.
+from huggingface_hub import hf_hub_download
+import glob
+CTI_REPO = "AI4Sec/cti-bench"        # as in your earlier list_repo_files call (verify)
+cti = hf_hub_download(CTI_REPO, "cti-mcq.tsv", repo_type="dataset", local_dir="/kaggle/working/bench")
+!git clone --depth 1 https://github.com/cybermetric/CyberMetric /kaggle/working/CyberMetric
+cm = sorted(glob.glob("/kaggle/working/CyberMetric/CyberMetric-500*.json"))
+print(cti, cm)
+assert len(cm) == 1, cm
+```
+
+```python
+# 3. Olmo 3 (use --show-first once to eyeball the exact prompt; it prints to stderr)
+!python Aegis-Core/scripts/eval_hf_mcq.py --model-id allenai/Olmo-3-1025-7B --revision a81bae42db3975be1671e27b9c9a56da1a9f980f \
+  --bench cti_mcq={cti} --bench cybermetric500={cm[0]} --shots 4 --limit 500 --show-first \
+  --out /kaggle/working/mcq_olmo3_7b.json
+```
+
+```python
+# 4. Qwen3-8B-Base
+!python Aegis-Core/scripts/eval_hf_mcq.py --model-id Qwen/Qwen3-8B-Base --revision 49e3418fbbbca6ecbdf9608b4d22e5a407081db4 \
+  --bench cti_mcq={cti} --bench cybermetric500={cm[0]} --shots 4 --limit 500 \
+  --out /kaggle/working/mcq_qwen3_8b.json
+```
+
+Notes:
+- `--limit 500` takes the first 500 test questions in sha256 order (a fixed, content-based
+  subset, identical for both models). Omit it to score all 2,500 CTI-MCQ questions (slower).
+- The script stops with an error if " A".." D" is not one token in a tokenizer; tell me if so.
+- Output files refuse to overwrite; use a new `--out` name for a rerun.
+- Paste the printed summary (accuracy, interval, baseline, predicted-letter counts per
+  benchmark), plus `commit_hash` and `skipped_too_long` from each JSON.
