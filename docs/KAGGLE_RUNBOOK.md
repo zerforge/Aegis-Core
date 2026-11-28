@@ -108,3 +108,28 @@ Notes:
 - Output files refuse to overwrite; use a new `--out` name for a rerun.
 - Paste the printed summary (accuracy, interval, baseline, predicted-letter counts per
   benchmark), plus `commit_hash` and `skipped_too_long` from each JSON.
+
+# Step 3: project-written Indonesian set and its English twin (evals/mcq_id_v0.jsonl, mcq_en_parallel_v0.jsonl)
+
+60 questions in 6 topics, written by the assistant for this project (no text copied from any
+benchmark), each in Indonesian and in English with the same option order and the same answer
+letter. The Indonesian-minus-English accuracy gap of one model measures the language effect with
+the facts held fixed. Statuses: `unreviewed` until the owner checks the key and wording; `ok` after;
+`rejected` is never loaded. Until the owner has reviewed items, a run without `--only-reviewed` is
+PROVISIONAL (it includes unreviewed items) and must be labelled so in EXPERIMENTS.md. Questions
+59 and 60 are Indonesian local facts: verify them against an official source before marking `ok`.
+Few-shot examples and test items are chosen by item id, so both languages use the same 4 examples
+(excluded from the test) and the same 56 test items. With 56 items an interval is about
++/- 10 points; this set detects only large gaps.
+
+```python
+# Kaggle: after `git clone -b bakeoff-step2 ...` (push the branch first so evals/ is included)
+SEC_ID = "Aegis-Core/evals/mcq_id_v0.jsonl"; SEC_EN = "Aegis-Core/evals/mcq_en_parallel_v0.jsonl"
+!python Aegis-Core/scripts/eval_hf_mcq.py --model-id allenai/Olmo-3-1025-7B --revision a81bae42db3975be1671e27b9c9a56da1a9f980f \
+  --bench sec_id={SEC_ID} --bench sec_en={SEC_EN} --shots 4 --save-preds --out /kaggle/working/mcq_sec_olmo3_7b.json
+!python Aegis-Core/scripts/eval_hf_mcq.py --model-id Qwen/Qwen3-8B-Base --revision 49e3418fbbbca6ecbdf9608b4d22e5a407081db4 \
+  --bench sec_id={SEC_ID} --bench sec_en={SEC_EN} --shots 4 --save-preds --out /kaggle/working/mcq_sec_qwen3_8b.json
+```
+
+Add `--only-reviewed` once items are marked `ok`. The JSON then records `only_reviewed` and
+`items_in_file_not_rejected`. `commit_hash_source` should read `pinned_arg`.

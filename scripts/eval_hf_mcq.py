@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 LETTERS = "ABCD"
 HEADER = "The following are multiple-choice questions about cybersecurity. Answer with the letter of the correct option.\n\n"
 
@@ -55,23 +55,29 @@ def load_ctibench(path):
     return items, bad
 
 
-def load_jsonl(path):
+def load_jsonl(path, only_reviewed=False):
+    """Soal berstatus review 'rejected' tidak pernah dimuat; dengan only_reviewed, hanya 'ok'."""
     items, bad = [], 0
     for i, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines()):
         if line.strip():
             r = json.loads(line)
+            status = r.get("review", "ok")
+            if status == "rejected" or (only_reviewed and status != "ok"):
+                continue
             it = _item(r.get("id", i), r["question"], r["options"], r["answer"])
             items.append(it) if it else None
             bad += it is None
     return items, bad
 
 
-def load_bench(path):
+def load_bench(path, only_reviewed=False):
     suffix = Path(path).suffix
     loader = {".tsv": load_ctibench, ".json": load_cybermetric, ".jsonl": load_jsonl}.get(suffix)
     if loader is None:
         raise ValueError(f"format tidak dikenal: {suffix}")
-    items, bad = loader(path)
+    if only_reviewed and suffix != ".jsonl":
+        raise ValueError("--only-reviewed hanya berlaku untuk berkas .jsonl proyek")
+    items, bad = loader(path, only_reviewed) if suffix == ".jsonl" else loader(path)
     if not items:
         raise ValueError(f"tidak ada soal valid di {path}")
     return items, bad
@@ -81,9 +87,15 @@ def _key(item):
     return hashlib.sha256(item["question"].encode("utf-8")).hexdigest()
 
 
-def split_items(items, shots, limit):
-    """(contoh few-shot, soal uji). Contoh: satu per huruf gold (<= shots) menurut urutan sha256."""
-    ordered = sorted(items, key=_key)
+def _key_id(item):
+    return hashlib.sha256(item["id"].encode("utf-8")).hexdigest()
+
+
+def split_items(items, shots, limit, by="question"):
+    """(contoh few-shot, soal uji). Contoh: satu per huruf gold (<= shots) menurut urutan sha256
+    dari teks pertanyaan (by='question') atau dari id soal (by='id', untuk set proyek berpasangan
+    bahasa agar contoh dan soal uji sama di kedua bahasa)."""
+    ordered = sorted(items, key=_key_id if by == "id" else _key)
     shot, seen = [], set()
     for it in ordered:
         if it["answer"] not in seen and len(shot) < shots:
@@ -160,8 +172,10 @@ def run(a):
     t0, res = time.time(), {}
     for spec in a.bench:
         name, path = spec.split("=", 1)
-        items, bad = load_bench(path)
-        shot, test = split_items(items, a.shots, a.limit)
+        items, bad = load_bench(path, a.only_reviewed)
+        in_file = len(load_bench(path)[0]) if a.only_reviewed else len(items)
+        by = "id" if Path(path).suffix == ".jsonl" else "question"
+        shot, test = split_items(items, a.shots, a.limit, by)
         if a.show_first:
             print(f"--- prompt pertama ({name}) ---\n{build_prompt(shot, test[0])}\n---", file=sys.stderr)
         gold, pred, keys, too_long = [], [], [], 0
@@ -175,12 +189,13 @@ def run(a):
                 logits = model(input_ids=x).logits[0, -1].float()
             pred.append(LETTERS[int(torch.argmax(logits[letter_ids]))])
             gold.append(it["answer"])
-            keys.append(_key(it)[:16])
+            keys.append(it["id"] if by == "id" else _key(it)[:16])
         r = summarize(gold, pred)
         if a.save_preds:
             r["items"] = pred_records(keys, gold, pred)
         r.update({"file": Path(path).name, "file_sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest(),
-                  "invalid_rows": bad, "skipped_too_long": too_long, "shots": len(shot),
+                  "invalid_rows": bad, "skipped_too_long": too_long,
+                  "selection_key": by, "only_reviewed": a.only_reviewed, "items_in_file_not_rejected": in_file, "shots": len(shot),
                   "fewshot_excluded_from_test": len(shot)})
         res[name] = r
     return {"script_version": __version__, "model_id": a.model_id, "revision_arg": a.revision,
@@ -205,6 +220,8 @@ def main(argv=None):
     ap.add_argument("--dtype", choices=("fp16", "bf16", "fp32"), default="fp16")
     ap.add_argument("--load-4bit", action="store_true")
     ap.add_argument("--show-first", action="store_true", help="cetak prompt pertama ke stderr")
+    ap.add_argument("--only-reviewed", action="store_true",
+                    help="untuk .jsonl proyek: hanya soal berstatus review 'ok' (bukan 'unreviewed')")
     ap.add_argument("--save-preds", action="store_true",
                     help="simpan gold/prediksi per soal (kunci = 16 heks pertama sha256 pertanyaan; "
                          "tanpa teks) agar dua model bisa dibandingkan berpasangan")
